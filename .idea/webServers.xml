@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="c97605c3-095c-4787-beab-3763e198042c" name="xusy_ubuntu">
+        <fileTransfer rootFolder="/home/xusy" accessType="SFTP" host="127.0.0.1" port="22102" sshConfigId="1fba9fbe-6e07-49ed-ad7b-fdb1d47010b1" sshConfig="xusy@127.0.0.1:22102 password">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>
