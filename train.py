@@ -150,7 +150,7 @@ def main():
 
     if cfg.checkpoint_config is not None:
         cfg.checkpoint_config.meta=dict(mmdet_version=__version__+get_git_hash()[:7],CLASSES=datasets[0].CLASSES)
-    model.CLASSES=datasets[0].CLASSES
+    # model.CLASSES=datasets[0].CLASSES
     train_detector(model,datasets,cfg,distributed=distributed,validate=(not args.no_validate),meta=meta,timestamp=timestamp)
 
 
