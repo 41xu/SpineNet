@@ -8,11 +8,13 @@ import mmcv
 import torch
 from mmcv import Config, DictAction
 from mmcv.runner import get_dist_info,init_dist
+from mmcv.utils import Registry
 from mmcv.utils import get_git_hash
 from mmdet import __version__
 from mmdet.apis import set_random_seed,train_detector
 from mmdet.datasets import build_dataset
-from mmdet.models import build_detector
+#from mmdet.models import build_detector
+from build_model import build_model
 from mmdet.utils import collect_env,get_root_logger
 
 
@@ -143,6 +145,13 @@ def main():
     meta['seed']=args.seed
     meta['exp_name']=os.path.basename(args.config)
 
+    model=build_model(cfg.model,train_cfg=cfg.get('train_cfg'),test_cfg=cfg.get('test_cfg'))
+    datasets=[build_dataset(cfg.data.train)]
+
+    if cfg.checkpoint_config is not None:
+        cfg.checkpoint_config.meta=dict(mmdet_version=__version__+get_git_hash()[:7],CLASSES=datasets[0].CLASSES)
+    model.CLASSS=datasets[0].CLASSES
+    train_detector(model,datasets,cfg,distributed=distributed,validate=(not args.no_validate),meta=meta,timestamp=timestamp)
 
 
 
