@@ -67,7 +67,7 @@ def parse_args():
     parser.add_argument(
         '--launcher',
         choices=['none', 'pytorch', 'slurm', 'mpi'],
-        default='pytorch',
+        default='none',
         help='job launcher')
     parser.add_argument('--local_rank', type=int, default=0)
     args = parser.parse_args()
@@ -92,11 +92,11 @@ def main():
 
     # set cudnn_benchmark
     if cfg.get('cudnn_benchmark',False):
-        print("set cudnn_benchmark")
+        # print("set cudnn_benchmark")
         torch.backends.cudnn.benchmark=True
     # set work_dir
     if args.work_dir is not None:
-        print("set work_dir")
+        # print("set work_dir")
         cfg.work_dir=args.work_dir
     elif cfg.get('work_dir',None) is not None:
         cfg.work_dir=os.path.join('./work_dirs',os.path.splitext(os.path.basename(args.config))[0])
