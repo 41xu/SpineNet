@@ -2605,62 +2605,10 @@ class AnchorGenerator(object):
         repr_str += f'{indent_str}center_offset={self.center_offset})'
         return repr_str
 
+
+
 @OPTIMIZER_BUILDERS.register_module()
-class SGDOptimizerConstructor:
-    """Default constructor for optimizers.
-    By default each parameter share the same optimizer settings, and we
-    provide an argument ``paramwise_cfg`` to specify parameter-wise settings.
-    It is a dict and may contain the following fields:
-    - ``custom_keys`` (dict): Specified parameters-wise settings by keys. If
-      one of the keys in ``custom_keys`` is a substring of the name of one
-      parameter, then the setting of the parameter will be specified by
-      ``custom_keys[key]`` and other setting like ``bias_lr_mult`` etc. will
-      be ignored. It should be noted that the aforementioned ``key`` is the
-      longest key that is a substring of the name of the parameter. If there
-      are multiple matched keys with the same length, then the key with lower
-      alphabet order will be chosen.
-      ``custom_keys[key]`` should be a dict and may contain fields ``lr_mult``
-      and ``decay_mult``. See Example 2 below.
-    - ``bias_lr_mult`` (float): It will be multiplied to the learning
-      rate for all bias parameters (except for those in normalization
-      layers and offset layers of DCN).
-    - ``bias_decay_mult`` (float): It will be multiplied to the weight
-      decay for all bias parameters (except for those in
-      normalization layers, depthwise conv layers, offset layers of DCN).
-    - ``norm_decay_mult`` (float): It will be multiplied to the weight
-      decay for all weight and bias parameters of normalization
-      layers.
-    - ``dwconv_decay_mult`` (float): It will be multiplied to the weight
-      decay for all weight and bias parameters of depthwise conv
-      layers.
-    - ``dcn_offset_lr_mult`` (float): It will be multiplied to the learning
-      rate for parameters of offset layer in the deformable convs
-      of a model.
-    - ``bypass_duplicate`` (bool): If true, the duplicate parameters
-      would not be added into optimizer. Default: False.
-    Note:
-        1. If the option ``dcn_offset_lr_mult`` is used, the constructor will
-            override the effect of ``bias_lr_mult`` in the bias of offset
-            layer. So be careful when using both ``bias_lr_mult`` and
-            ``dcn_offset_lr_mult``. If you wish to apply both of them to the
-            offset layer in deformable convs, set ``dcn_offset_lr_mult``
-            to the original ``dcn_offset_lr_mult`` * ``bias_lr_mult``.
-        2. If the option ``dcn_offset_lr_mult`` is used, the construtor will
-            apply it to all the DCN layers in the model. So be carefull when
-            the model contains multiple DCN layers in places other than
-            backbone.
-    Args:
-        model (:obj:`nn.Module`): The model with parameters to be optimized.
-        optimizer_cfg (dict): The config dict of the optimizer.
-            Positional fields are
-                - `type`: class name of the optimizer.
-            Optional fields are
-                - any arguments of the corresponding optimizer type, e.g.,
-                  lr, weight_decay, momentum, etc.
-        paramwise_cfg (dict, optional): Parameter-wise options.
-
-    """
-
+class DefaultOptimizerConstructor:
     def __init__(self, optimizer_cfg, paramwise_cfg=None):
         if not isinstance(optimizer_cfg, dict):
             raise TypeError('optimizer_cfg should be a dict',
@@ -2813,7 +2761,12 @@ class SGDOptimizerConstructor:
         optimizer_cfg['params'] = params
 
         return build_from_cfg(optimizer_cfg, OPTIMIZERS)
-
+@OPTIMIZER_BUILDERS.register_module()
+class SGD(DefaultOptimizerConstructor):
+    def __init__(self, optimizer_cfg, paramwise_cfg=None):
+        super(DefaultOptimizerConstructor,self).__init__(
+        optimizer_cfg=optimizer_cfg,paramwise_cfg=paramwise_cfg)
+    
 
 def smooth_l1_loss(pred, target, beta=1.0):
     """Smooth L1 loss.
