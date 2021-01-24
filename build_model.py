@@ -2755,8 +2755,8 @@ class DefaultOptimizerConstructor:
 
         # set param-wise lr and weight decay recursively
         params = list(optimizer_cfg.keys())
-        self.add_params(params, model)
         print(params)
+        self.add_params(params, model)
         optimizer_cfg['params'] = params
         return build_from_cfg(optimizer_cfg, OPTIMIZERS)
 
