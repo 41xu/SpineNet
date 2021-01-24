@@ -2747,13 +2747,14 @@ class DefaultOptimizerConstructor:
             model = model.module
 
         optimizer_cfg = self.optimizer_cfg.copy()
+        print(optimizer_cfg)
         # if no paramwise option is specified, just use the global setting
         if self.paramwise_cfg!={}:
             optimizer_cfg['params'] = model.parameters()
             return build_from_cfg(optimizer_cfg, OPTIMIZERS)
 
         # set param-wise lr and weight decay recursively
-        params = list(model.parameters().keys())
+        params = list(optimizer_cfg.keys())
         self.add_params(params, model)
         print(params)
         optimizer_cfg['params'] = params
