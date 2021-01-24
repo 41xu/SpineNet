@@ -2727,7 +2727,7 @@ class DefaultOptimizerConstructor:
         optimizer_cfg = self.optimizer_cfg.copy()
         print(optimizer_cfg)
         # if no paramwise option is specified, just use the global setting
-        if self.paramwise_cfg!={}:
+        if self.paramwise_cfg is not None:
             optimizer_cfg['params'] = model.parameters()
             return build_from_cfg(optimizer_cfg, OPTIMIZERS)
 
