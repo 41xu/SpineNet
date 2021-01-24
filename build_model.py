@@ -2612,8 +2612,8 @@ class DefaultOptimizerConstructor:
     def __init__(self, optimizer_cfg, paramwise_cfg=None):
         self.optimizer_cfg = optimizer_cfg
         self.paramwise_cfg = None if paramwise_cfg is None else paramwise_cfg
-        self.base_lr = optimizer_cfg.get('lr')
-        self.base_wd = optimizer_cfg.get('weight_decay')
+        self.lr = optimizer_cfg.get('lr')
+        self.wd = optimizer_cfg.get('weight_decay')
 
     def _is_in(self, param_group, param_group_list):
         param = set(param_group['params'])
@@ -2733,8 +2733,6 @@ class DefaultOptimizerConstructor:
         params = list(optimizer_cfg.keys())
         self.add_params(params, model)
         optimizer_cfg['params'] = params
-        optimizer_cfg['lr']=self.base_lr
-        optimizer_cfg['wd']=self.base_wd
         return build_from_cfg(optimizer_cfg, OPTIMIZERS)
 
 
@@ -2958,11 +2956,11 @@ def build_loss(cfg):
     return build(cfg, LOSSES)
 
 
-def build_optimizer_constructor(cfg):
-    return build_from_cfg(cfg, OPTIMIZER_BUILDERS)
+def build_optimizer_constructor(cfg,default_args=None):
+    return build_from_cfg(cfg, OPTIMIZER_BUILDERS,default_args)
 
 
-def build_optimizer(model, cfg):
+def build_optimizer(model, cfg,default_args=None):
     optimizer_cfg = copy.deepcopy(cfg)
     constructor_type = optimizer_cfg.pop('constructor',
                                          'DefaultOptimizerConstructor')
@@ -2972,6 +2970,6 @@ def build_optimizer(model, cfg):
         dict(
             type=constructor_type,
             optimizer_cfg=optimizer_cfg,
-            paramwise_cfg=paramwise_cfg))
+            paramwise_cfg=paramwise_cfg),default_args)
     optimizer = optim_constructor(model)
     return optimizer
