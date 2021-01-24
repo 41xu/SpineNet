@@ -2753,11 +2753,13 @@ class DefaultOptimizerConstructor:
             return build_from_cfg(optimizer_cfg, OPTIMIZERS)
 
         # set param-wise lr and weight decay recursively
-        params = []
+        params = list(model.parameters().keys())
         self.add_params(params, model)
         print(params)
         optimizer_cfg['params'] = params
         return build_from_cfg(optimizer_cfg, OPTIMIZERS)
+
+
 @OPTIMIZERS.register_module()
 class SGD(DefaultOptimizerConstructor):
     def __init__(self, optimizer_cfg, paramwise_cfg=None):
