@@ -1,4 +1,4 @@
-from mmcv.utils import Registry, build_from_cfg
+from mmcv.utils import Registry, build_from_cfg, is_list_of
 from torch.nn import GroupNorm, LayerNorm
 import torch.nn.functional as F
 from torch.nn.modules.utils import _pair
@@ -1303,16 +1303,16 @@ class AnchorHead(BaseDenseHead, BBoxTestMixin):
                  # loss_bbox=dict(
                  #     type='SmoothL1Loss', beta=1.0 / 9.0, loss_weight=1.0),
                  train_cfg=None,
-                 test_cfg=None,**kwargs):
+                 test_cfg=None, **kwargs):
         anchor_generator = dict(type='AnchorGenerator',
-                                scales=[8,16,32], ratios=[0.5,1.,2.],
+                                scales=[8, 16, 32], ratios=[0.5, 1., 2.],
                                 strides=[4, 8, 16, 32, 64])
         bbox_coder = dict(type='DeltaXYWHBBoxCoder', clip_border=True, target_means=(.0, .0, .0, .0),
                           target_stds=(1.0, 1.0, 1.0, 1.0))
 
         reg_decoded_bbox = False
-        loss_cls=dict(type='CrossEntropyLoss',use_sigmoid=True,loss_weight=1.0)
-        loss_bbox=dict(type='SmoothL1Loss', beta=1.0 / 9.0, loss_weight=1.0)
+        loss_cls = dict(type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0)
+        loss_bbox = dict(type='SmoothL1Loss', beta=1.0 / 9.0, loss_weight=1.0)
         super(AnchorHead, self).__init__()
         self.in_channels = in_channels
         self.num_classes = num_classes
@@ -2353,7 +2353,7 @@ class AnchorGenerator(object):
             self.scales = torch.Tensor(scales)
         elif octave_base_scale is not None and scales_per_octave is not None:
             octave_scales = np.array(
-                [2**(i / scales_per_octave) for i in range(scales_per_octave)])
+                [2 ** (i / scales_per_octave) for i in range(scales_per_octave)])
             scales = octave_scales * octave_base_scale
             self.scales = torch.Tensor(scales)
         else:
@@ -2606,18 +2606,76 @@ class AnchorGenerator(object):
         return repr_str
 
 
-
 @OPTIMIZER_BUILDERS.register_module()
-class DefaultOptimizerConstructor:
+class DefaultOptimizerConstructor(object):
+    """Default constructor for optimizers.
+
+    By default each parameter share the same optimizer settings, and we
+    provide an argument ``paramwise_cfg`` to specify parameter-wise settings.
+    It is a dict and may contain the following fields:
+
+    - ``bias_lr_mult`` (float): It will be multiplied to the learning
+      rate for all bias parameters (except for those in normalization
+      layers).
+    - ``bias_decay_mult`` (float): It will be multiplied to the weight
+      decay for all bias parameters (except for those in
+      normalization layers and depthwise conv layers).
+    - ``norm_decay_mult`` (float): It will be multiplied to the weight
+      decay for all weight and bias parameters of normalization
+      layers.
+    - ``dwconv_decay_mult`` (float): It will be multiplied to the weight
+      decay for all weight and bias parameters of depthwise conv
+      layers.
+    - ``bypass_duplicate`` (bool): If true, the duplicate parameters
+      would not be added into optimizer. Default: False
+
+    Args:
+        model (:obj:`nn.Module`): The model with parameters to be optimized.
+        optimizer_cfg (dict): The config dict of the optimizer.
+            Positional fields are
+
+                - `type`: class name of the optimizer.
+
+            Optional fields are
+
+                - any arguments of the corresponding optimizer type, e.g.,
+                  lr, weight_decay, momentum, etc.
+        paramwise_cfg (dict, optional): Parameter-wise options.
+
+    Example:
+        >>> model = torch.nn.modules.Conv1d(1, 1, 1)
+        >>> optimizer_cfg = dict(type='SGD', lr=0.01, momentum=0.9,
+        >>>                      weight_decay=0.0001)
+        >>> paramwise_cfg = dict(norm_decay_mult=0.)
+        >>> optim_builder = DefaultOptimizerConstructor(
+        >>>     optimizer_cfg, paramwise_cfg)
+        >>> optimizer = optim_builder(model)
+    """
+
     def __init__(self, optimizer_cfg, paramwise_cfg=None):
+        if not isinstance(optimizer_cfg, dict):
+            raise TypeError('optimizer_cfg should be a dict',
+                            f'but got {type(optimizer_cfg)}')
         self.optimizer_cfg = optimizer_cfg
-        self.paramwise_cfg = None if paramwise_cfg is None else paramwise_cfg
-        # self.lr = optimizer_cfg.get('lr')
-        # self.wd = optimizer_cfg.get('weight_decay')
-        self.lr=0.07
-        self.wd=4e-5
+        self.paramwise_cfg = {} if paramwise_cfg is None else paramwise_cfg
+        self.base_lr = optimizer_cfg.get('lr', None)
+        self.base_wd = optimizer_cfg.get('weight_decay', None)
+        self._validate_cfg()
+
+    def _validate_cfg(self):
+        if not isinstance(self.paramwise_cfg, dict):
+            raise TypeError('paramwise_cfg should be None or a dict, '
+                            f'but got {type(self.paramwise_cfg)}')
+        # get base lr and weight decay
+        # weight_decay must be explicitly specified if mult is specified
+        if ('bias_decay_mult' in self.paramwise_cfg
+                or 'norm_decay_mult' in self.paramwise_cfg
+                or 'dwconv_decay_mult' in self.paramwise_cfg):
+            if self.base_wd is None:
+                raise ValueError('base_wd should not be None')
 
     def _is_in(self, param_group, param_group_list):
+        assert is_list_of(param_group_list, dict)
         param = set(param_group['params'])
         param_set = set()
         for group in param_group_list:
@@ -2625,30 +2683,25 @@ class DefaultOptimizerConstructor:
 
         return not param.isdisjoint(param_set)
 
-    def add_params(self, params, module, prefix='', is_dcn_module=None):
+    def add_params(self, params, module, prefix=''):
+
         """Add all parameters of module to the params list.
+
         The parameters of the given module will be added to the list of param
         groups, with specific rules defined by paramwise_cfg.
+
         Args:
             params (list[dict]): A list of param groups, it will be modified
                 in place.
             module (nn.Module): The module to be added.
             prefix (str): The prefix of the module
-            is_dcn_module (int|float|None): If the current module is a
-                submodule of DCN, `is_dcn_module` will be passed to
-                control conv_offset layer's learning rate. Defaults to None.
         """
         # get param-wise options
-        custom_keys = self.paramwise_cfg.get('custom_keys', {})
-        # first sort with alphabet order and then sort with reversed len of str
-        sorted_keys = sorted(sorted(custom_keys.keys()), key=len, reverse=True)
-
         bias_lr_mult = self.paramwise_cfg.get('bias_lr_mult', 1.)
         bias_decay_mult = self.paramwise_cfg.get('bias_decay_mult', 1.)
         norm_decay_mult = self.paramwise_cfg.get('norm_decay_mult', 1.)
         dwconv_decay_mult = self.paramwise_cfg.get('dwconv_decay_mult', 1.)
         bypass_duplicate = self.paramwise_cfg.get('bypass_duplicate', False)
-        dcn_offset_lr_mult = self.paramwise_cfg.get('dcn_offset_lr_mult', 1.)
 
         # special rules for norm layers and depth-wise conv layers
         is_norm = isinstance(module,
@@ -2666,83 +2719,53 @@ class DefaultOptimizerConstructor:
                 warnings.warn(f'{prefix} is duplicate. It is skipped since '
                               f'bypass_duplicate={bypass_duplicate}')
                 continue
-            # if the parameter match one of the custom keys, ignore other rules
-            is_custom = False
-            for key in sorted_keys:
-                if key in f'{prefix}.{name}':
-                    is_custom = True
-                    lr_mult = custom_keys[key].get('lr_mult', 1.)
-                    param_group['lr'] = self.base_lr * lr_mult
-                    if self.base_wd is not None:
-                        decay_mult = custom_keys[key].get('decay_mult', 1.)
-                        param_group['weight_decay'] = self.base_wd * decay_mult
-                    break
-
-            if not is_custom:
-                # bias_lr_mult affects all bias parameters
-                # except for norm.bias dcn.conv_offset.bias
-                if name == 'bias' and not (is_norm or is_dcn_module):
-                    param_group['lr'] = self.base_lr * bias_lr_mult
-
-                if (prefix.find('conv_offset') != -1 and is_dcn_module
-                        and isinstance(module, torch.nn.Conv2d)):
-                    # deal with both dcn_offset's bias & weight
-                    param_group['lr'] = self.base_lr * dcn_offset_lr_mult
-
-                # apply weight decay policies
-                if self.base_wd is not None:
-                    # norm decay
-                    if is_norm:
-                        param_group[
-                            'weight_decay'] = self.base_wd * norm_decay_mult
-                    # depth-wise conv
-                    elif is_dwconv:
-                        param_group[
-                            'weight_decay'] = self.base_wd * dwconv_decay_mult
-                    # bias lr and decay
-                    elif name == 'bias' and not is_dcn_module:
-                        # TODO: current bias_decay_mult will have affect on DCN
-                        param_group[
-                            'weight_decay'] = self.base_wd * bias_decay_mult
+            # bias_lr_mult affects all bias parameters except for norm.bias
+            if name == 'bias' and not is_norm:
+                param_group['lr'] = self.base_lr * bias_lr_mult
+            # apply weight decay policies
+            if self.base_wd is not None:
+                # norm decay
+                if is_norm:
+                    param_group[
+                        'weight_decay'] = self.base_wd * norm_decay_mult
+                # depth-wise conv
+                elif is_dwconv:
+                    param_group[
+                        'weight_decay'] = self.base_wd * dwconv_decay_mult
+                # bias lr and decay
+                elif name == 'bias':
+                    param_group[
+                        'weight_decay'] = self.base_wd * bias_decay_mult
             params.append(param_group)
 
-        if check_ops_exist():
-            from mmcv.ops import DeformConv2d, ModulatedDeformConv2d
-            is_dcn_module = isinstance(module,
-                                       (DeformConv2d, ModulatedDeformConv2d))
-        else:
-            is_dcn_module = False
         for child_name, child_mod in module.named_children():
             child_prefix = f'{prefix}.{child_name}' if prefix else child_name
-            self.add_params(
-                params,
-                child_mod,
-                prefix=child_prefix,
-                is_dcn_module=is_dcn_module)
+            self.add_params(params, child_mod, prefix=child_prefix)
+
 
     def __call__(self, model):
         if hasattr(model, 'module'):
             model = model.module
-
+    
         optimizer_cfg = self.optimizer_cfg.copy()
-        print(optimizer_cfg)
         # if no paramwise option is specified, just use the global setting
-        if self.paramwise_cfg is not None:
+        if not self.paramwise_cfg:
             optimizer_cfg['params'] = model.parameters()
             return build_from_cfg(optimizer_cfg, OPTIMIZERS)
 
         # set param-wise lr and weight decay recursively
-        params = list(optimizer_cfg.keys())
+        params = []
         self.add_params(params, model)
         optimizer_cfg['params'] = params
+
         return build_from_cfg(optimizer_cfg, OPTIMIZERS)
 
 
 @OPTIMIZERS.register_module()
 class SGD(DefaultOptimizerConstructor):
     def __init__(self, optimizer_cfg, paramwise_cfg=None):
-        super(DefaultOptimizerConstructor,self).__init__(
-        optimizer_cfg=optimizer_cfg,paramwise_cfg=paramwise_cfg)
+        super(DefaultOptimizerConstructor, self).__init__(
+            optimizer_cfg=optimizer_cfg, paramwise_cfg=paramwise_cfg)
 
 
 def smooth_l1_loss(pred, target, beta=1.0):
@@ -2763,6 +2786,8 @@ def smooth_l1_loss(pred, target, beta=1.0):
     loss = torch.where(diff < beta, 0.5 * diff * diff / beta,
                        diff - 0.5 * beta)
     return loss
+
+
 def cross_entropy(pred,
                   label,
                   weight=None,
@@ -2881,6 +2906,7 @@ def mask_cross_entropy(pred,
     return F.binary_cross_entropy_with_logits(
         pred_slice, target, weight=class_weight, reduction='mean')[None]
 
+
 def weight_reduce_loss(loss, weight=None, reduction='mean', avg_factor=None):
     """Apply element-wise weight and reduce loss.
 
@@ -2909,6 +2935,7 @@ def weight_reduce_loss(loss, weight=None, reduction='mean', avg_factor=None):
             raise ValueError('avg_factor can not be used with reduction="sum"')
     return loss
 
+
 def reduce_loss(loss, reduction):
     """Reduce loss as specified.
 
@@ -2928,11 +2955,14 @@ def reduce_loss(loss, reduction):
     elif reduction_enum == 2:
         return loss.sum()
 
+
 def build(cfg, registry, default_args=None):
     return build_from_cfg(cfg, registry, default_args)
 
+
 def build_anchor_generator(cfg, default_args=None):
     return build_from_cfg(cfg, ANCHOR_GENERATORS, default_args)
+
 
 def build_backbone(cfg):
     """Build backbone."""
@@ -2958,11 +2988,11 @@ def build_loss(cfg):
     return build(cfg, LOSSES)
 
 
-def build_optimizer_constructor(cfg,default_args=None):
-    return build_from_cfg(cfg, OPTIMIZER_BUILDERS,default_args)
+def build_optimizer_constructor(cfg, default_args=None):
+    return build_from_cfg(cfg, OPTIMIZER_BUILDERS, default_args)
 
 
-def build_optimizer(model, cfg,default_args=None):
+def build_optimizer(model, cfg, default_args=None):
     optimizer_cfg = copy.deepcopy(cfg)
     constructor_type = optimizer_cfg.pop('constructor',
                                          'DefaultOptimizerConstructor')
@@ -2972,6 +3002,6 @@ def build_optimizer(model, cfg,default_args=None):
         dict(
             type=constructor_type,
             optimizer_cfg=optimizer_cfg,
-            paramwise_cfg=paramwise_cfg),default_args)
+            paramwise_cfg=paramwise_cfg), default_args)
     optimizer = optim_constructor(model)
     return optimizer
