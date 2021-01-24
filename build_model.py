@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.modules.utils import _pair
 import functools
+import copy
 
 from mmdet.models.backbones.resnet import BasicBlock, Bottleneck
 
@@ -35,6 +36,7 @@ HEADS = Registry('head')
 LOSSES = Registry('loss')
 DETECTORS = Registry('detector')
 ANCHOR_GENERATORS = Registry('Anchor generator')
+OPTIMIZER_BUILDERS = Registry('optimizer builder')
 
 FILTER_SIZE_MAP = {
     1: 32,
@@ -2830,3 +2832,17 @@ def build_model(cfg, train_cfg=None, test_cfg=None):
 def build_loss(cfg):
     """Build loss."""
     return build(cfg, LOSSES)
+def build_optimizer_constructor(cfg):
+    return build_from_cfg(cfg, OPTIMIZER_BUILDERS)
+def build_optimizer(model, cfg):
+    optimizer_cfg = copy.deepcopy(cfg)
+    constructor_type = optimizer_cfg.pop('constructor',
+                                         'DefaultOptimizerConstructor')
+    paramwise_cfg = optimizer_cfg.pop('paramwise_cfg', None)
+    optim_constructor = build_optimizer_constructor(
+        dict(
+            type=constructor_type,
+            optimizer_cfg=optimizer_cfg,
+            paramwise_cfg=paramwise_cfg))
+    optimizer = optim_constructor(model)
+    return optimizer
