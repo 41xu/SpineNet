@@ -2612,8 +2612,9 @@ class DefaultOptimizerConstructor:
     def __init__(self, optimizer_cfg, paramwise_cfg=None):
         self.optimizer_cfg = optimizer_cfg
         self.paramwise_cfg = {} if paramwise_cfg is None else paramwise_cfg
-        self.base_lr = optimizer_cfg.get('lr', None)
-        self.base_wd = optimizer_cfg.get('weight_decay', None)
+        self.base_lr = optimizer_cfg.get('lr')
+        self.base_wd = optimizer_cfg.get('weight_decay')
+        print(self.base_lr)
         self._validate_cfg()
 
     def _validate_cfg(self):
