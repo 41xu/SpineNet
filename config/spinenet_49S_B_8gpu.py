@@ -106,9 +106,9 @@ evaluation = dict(interval=1, metric='bbox')
 # optimizer
 optimizer = dict(
     type='SGD',
-    lr=0.07,
+    #lr=0.07,
     momentum=0.9,
-    weight_decay=4e-5,
+    #weight_decay=4e-5,
     paramwise_options=dict(norm_decay_mult=0))
 optimizer_config = dict(grad_clip=dict(max_norm=10, norm_type=2))
 # learning policy

@@ -2612,8 +2612,10 @@ class DefaultOptimizerConstructor:
     def __init__(self, optimizer_cfg, paramwise_cfg=None):
         self.optimizer_cfg = optimizer_cfg
         self.paramwise_cfg = None if paramwise_cfg is None else paramwise_cfg
-        self.lr = optimizer_cfg.get('lr')
-        self.wd = optimizer_cfg.get('weight_decay')
+        # self.lr = optimizer_cfg.get('lr')
+        # self.wd = optimizer_cfg.get('weight_decay')
+        self.lr=0.07
+        self.wd=4e-5
 
     def _is_in(self, param_group, param_group_list):
         param = set(param_group['params'])
