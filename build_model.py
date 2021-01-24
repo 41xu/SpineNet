@@ -1,12 +1,14 @@
-from mmcv.utils import Registry,build_from_cfg
+from mmcv.utils import Registry, build_from_cfg
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.modules.utils import _pair
+import functools
 
 from mmdet.models.backbones.resnet import BasicBlock, Bottleneck
 
 from mmcv.cnn import ConvModule
 
-from mmcv.cnn import constant_init, kaiming_init,bias_init_with_prob,normal_init
+from mmcv.cnn import constant_init, kaiming_init, bias_init_with_prob, normal_init
 from torch.nn.modules.batchnorm import _BatchNorm
 import inspect
 import os.path as osp
@@ -21,18 +23,18 @@ from matplotlib.patches import Polygon
 from mmcv.cnn import normal_init
 from mmcv.runner import force_fp32
 
-from mmdet.core import (anchor_inside_flags, build_anchor_generator,
+from mmdet.core import (anchor_inside_flags,
                         build_assigner, build_bbox_coder, build_sampler,
                         images_to_levels, multi_apply, multiclass_nms, unmap)
 
-
-BACKBONES=Registry('backbone')
+BACKBONES = Registry('backbone')
 NECKS = Registry('neck')
 ROI_EXTRACTORS = Registry('roi_extractor')
 SHARED_HEADS = Registry('shared_head')
 HEADS = Registry('head')
 LOSSES = Registry('loss')
 DETECTORS = Registry('detector')
+ANCHOR_GENERATORS = Registry('Anchor generator')
 
 FILTER_SIZE_MAP = {
     1: 32,
@@ -114,6 +116,7 @@ from mmcv.utils import print_log
 # from mmdet.core.visualization import imshow_det_bboxes
 from mmdet.utils import get_root_logger
 
+
 def color_val_matplotlib(color):
     """Convert various input in BGR order to normalized RGB matplotlib color
     tuples,
@@ -127,6 +130,8 @@ def color_val_matplotlib(color):
     color = mmcv.color_val(color)
     color = [color / 255 for color in color[::-1]]
     return tuple(color)
+
+
 def imshow_det_bboxes(img,
                       bboxes,
                       labels,
@@ -429,7 +434,7 @@ class BaseDetector(nn.Module, metaclass=ABCMeta):
             assert 'proposals' not in kwargs
             return self.aug_test(imgs, img_metas, **kwargs)
 
-    @auto_fp16(apply_to=('img', ))
+    @auto_fp16(apply_to=('img',))
     def forward(self, img, img_metas, return_loss=True, **kwargs):
         """Calls either :func:`forward_train` or :func:`forward_test` depending
         on whether ``return_loss`` is ``True``.
@@ -624,6 +629,7 @@ class BaseDetector(nn.Module, metaclass=ABCMeta):
         if not (show or out_file):
             return img
 
+
 from mmcv.cnn import build_conv_layer, build_norm_layer
 from torch import nn as nn
 
@@ -754,7 +760,8 @@ class Resample(nn.Module):
             in_channels *= 4
         self.squeeze_conv = ConvModule(in_channels, new_in_channels, 1, norm_cfg=norm_cfg)
         if scale < 1:
-            self.downsample_conv = ConvModule(new_in_channels, new_in_channels, 3, padding=1, stride=2, norm_cfg=norm_cfg)
+            self.downsample_conv = ConvModule(new_in_channels, new_in_channels, 3, padding=1, stride=2,
+                                              norm_cfg=norm_cfg)
         self.expand_conv = ConvModule(new_in_channels, out_channels, 1, norm_cfg=norm_cfg, act_cfg=None)
 
     def _resize(self, x):
@@ -766,7 +773,8 @@ class Resample(nn.Module):
             x = self.downsample_conv(x)
             if self.scale < 0.5:
                 new_kernel_size = 3 if self.scale >= 0.25 else 5
-                x = F.max_pool2d(x, kernel_size=new_kernel_size, stride=int(0.5/self.scale), padding=new_kernel_size//2)
+                x = F.max_pool2d(x, kernel_size=new_kernel_size, stride=int(0.5 / self.scale),
+                                 padding=new_kernel_size // 2)
             return x
 
     def forward(self, inputs):
@@ -778,6 +786,7 @@ class Resample(nn.Module):
 
 class Merge(nn.Module):
     """Merge two input tensors"""
+
     def __init__(self, block_spec, norm_cfg, alpha, filter_size_scale):
         super(Merge, self).__init__()
         out_channels = int(FILTER_SIZE_MAP[block_spec.level] * filter_size_scale)
@@ -788,7 +797,7 @@ class Merge(nn.Module):
         for spec_idx in block_spec.input_offsets:
             spec = BlockSpec(*SPINENET_BLOCK_SPECS[spec_idx])
             in_channels = int(FILTER_SIZE_MAP[spec.level] * filter_size_scale)
-            scale = 2**(spec.level - block_spec.level)
+            scale = 2 ** (spec.level - block_spec.level)
             self.resample_ops.append(
                 Resample(in_channels, out_channels, scale, spec.block_fn, norm_cfg, alpha)
             )
@@ -801,10 +810,8 @@ class Merge(nn.Module):
         return target_feat
 
 
-
 def make_res_layer(**kwargs):
     return ResLayer(**kwargs)
-
 
 
 import torch
@@ -871,6 +878,8 @@ class BaseDenseHead(nn.Module, metaclass=ABCMeta):
         else:
             proposal_list = self.get_bboxes(*outs, img_metas, cfg=proposal_cfg)
             return losses, proposal_list
+
+
 from inspect import signature
 
 import torch
@@ -1113,7 +1122,6 @@ class SingleStageDetector(BaseDetector):
         return [self.bbox_head.aug_test(feats, img_metas, rescale=rescale)]
 
 
-
 @DETECTORS.register_module()
 class RetinaNet(SingleStageDetector):
     """Implementation of `RetinaNet <https://arxiv.org/abs/1708.02002>`_"""
@@ -1128,9 +1136,11 @@ class RetinaNet(SingleStageDetector):
         super(RetinaNet, self).__init__(backbone, neck, bbox_head, train_cfg,
                                         test_cfg, pretrained)
 
+
 @BACKBONES.register_module()
 class SpineNet(nn.Module):
     """Class to build SpineNet backbone"""
+
     def __init__(self,
                  arch,
                  in_channels=3,
@@ -1171,18 +1181,18 @@ class SpineNet(nn.Module):
             norm_cfg=self.norm_cfg)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
 
-        self.init_block1=ResLayer(self._init_block_fn,64,int(FILTER_SIZE_MAP[2] * self._filter_size_scale),
-                                  self._block_repeats,conv_cfg=self.conv_cfg,norm_cfg=self.norm_cfg)
+        self.init_block1 = ResLayer(self._init_block_fn, 64, int(FILTER_SIZE_MAP[2] * self._filter_size_scale),
+                                    self._block_repeats, conv_cfg=self.conv_cfg, norm_cfg=self.norm_cfg)
 
-        self.init_block2=ResLayer(self._init_block_fn,int(FILTER_SIZE_MAP[2] * self._filter_size_scale) * 4,
-                                  int(FILTER_SIZE_MAP[2] * self._filter_size_scale),self._block_repeats,
-                                  conv_cfg=self.conv_cfg,norm_cfg=self.norm_cfg)
+        self.init_block2 = ResLayer(self._init_block_fn, int(FILTER_SIZE_MAP[2] * self._filter_size_scale) * 4,
+                                    int(FILTER_SIZE_MAP[2] * self._filter_size_scale), self._block_repeats,
+                                    conv_cfg=self.conv_cfg, norm_cfg=self.norm_cfg)
 
     def _make_endpoints(self):
         self.endpoint_convs = nn.ModuleDict()
         for block_spec in self._block_specs:
             if block_spec.is_output:
-                in_channels = int(FILTER_SIZE_MAP[block_spec.level]*self._filter_size_scale) * 4
+                in_channels = int(FILTER_SIZE_MAP[block_spec.level] * self._filter_size_scale) * 4
                 self.endpoint_convs[str(block_spec.level)] = ConvModule(in_channels,
                                                                         self._endpoints_num_filters,
                                                                         kernel_size=1,
@@ -1199,7 +1209,8 @@ class SpineNet(nn.Module):
             channels = int(FILTER_SIZE_MAP[spec.level] * self._filter_size_scale)
             in_channels = channels * 4 if spec.block_fn == Bottleneck else channels
             self.scale_permuted_blocks.append(
-                ResLayer(spec.block_fn,in_channels,channels,self._block_repeats,conv_cfg=self.conv_cfg,norm_cfg=self.norm_cfg)            )
+                ResLayer(spec.block_fn, in_channels, channels, self._block_repeats, conv_cfg=self.conv_cfg,
+                         norm_cfg=self.norm_cfg))
 
     def init_weights(self, pretrained=None):
         for m in self.modules():
@@ -1242,6 +1253,7 @@ class SpineNet(nn.Module):
 
         return [self.endpoint_convs[str(level)](output_feat[level]) for level in self.output_level]
 
+
 @HEADS.register_module()
 class AnchorHead(BaseDenseHead, BBoxTestMixin):
     """Anchor-based head (RPN, RetinaNet, SSD, etc.).
@@ -1268,25 +1280,34 @@ class AnchorHead(BaseDenseHead, BBoxTestMixin):
                  num_classes,
                  in_channels,
                  feat_channels=256,
-                 anchor_generator=dict(
-                     type='AnchorGenerator',
-                     scales=[8, 16, 32],
-                     ratios=[0.5, 1.0, 2.0],
-                     strides=[4, 8, 16, 32, 64]),
-                 bbox_coder=dict(
-                     type='DeltaXYWHBBoxCoder',
-                     clip_border=True,
-                     target_means=(.0, .0, .0, .0),
-                     target_stds=(1.0, 1.0, 1.0, 1.0)),
-                 reg_decoded_bbox=False,
-                 loss_cls=dict(
-                     type='CrossEntropyLoss',
-                     use_sigmoid=True,
-                     loss_weight=1.0),
-                 loss_bbox=dict(
-                     type='SmoothL1Loss', beta=1.0 / 9.0, loss_weight=1.0),
+                 # anchor_generator=dict(
+                 #     type='AnchorGenerator',
+                 #     scales=[8, 16, 32],
+                 #     ratios=[0.5, 1.0, 2.0],
+                 #     strides=[4, 8, 16, 32, 64]),
+                 # bbox_coder=dict(
+                 #     type='DeltaXYWHBBoxCoder',
+                 #     clip_border=True,
+                 #     target_means=(.0, .0, .0, .0),
+                 #     target_stds=(1.0, 1.0, 1.0, 1.0)),
+                 # reg_decoded_bbox=False,
+                 # loss_cls=dict(
+                 #     type='CrossEntropyLoss',
+                 #     use_sigmoid=True,
+                 #     loss_weight=1.0),
+                 # loss_bbox=dict(
+                 #     type='SmoothL1Loss', beta=1.0 / 9.0, loss_weight=1.0),
                  train_cfg=None,
-                 test_cfg=None):
+                 test_cfg=None,**kwargs):
+        anchor_generator = dict(type='AnchorGenerator',
+                                scales=[8,16,32], ratios=[0.5,1.,2.],
+                                strides=[4, 8, 16, 32, 64])
+        bbox_coder = dict(type='DeltaXYWHBBoxCoder', clip_border=True, target_means=(.0, .0, .0, .0),
+                          target_stds=(1.0, 1.0, 1.0, 1.0))
+
+        reg_decoded_bbox = False
+        loss_cls=dict(type='CrossEntropyLoss',use_sigmoid=True,loss_weight=1.0)
+        loss_bbox=dict(type='SmoothL1Loss', beta=1.0 / 9.0, loss_weight=1.0)
         super(AnchorHead, self).__init__()
         self.in_channels = in_channels
         self.num_classes = num_classes
@@ -1446,7 +1467,7 @@ class AnchorHead(BaseDenseHead, BBoxTestMixin):
                                            img_meta['img_shape'][:2],
                                            self.train_cfg.allowed_border)
         if not inside_flags.any():
-            return (None, ) * 7
+            return (None,) * 7
         # assign gt and sample anchors
         anchors = flat_anchors[inside_flags, :]
 
@@ -1459,7 +1480,7 @@ class AnchorHead(BaseDenseHead, BBoxTestMixin):
         num_valid_anchors = anchors.shape[0]
         bbox_targets = torch.zeros_like(anchors)
         bbox_weights = torch.zeros_like(anchors)
-        labels = anchors.new_full((num_valid_anchors, ),
+        labels = anchors.new_full((num_valid_anchors,),
                                   self.num_classes,
                                   dtype=torch.long)
         label_weights = anchors.new_zeros(num_valid_anchors, dtype=torch.float)
@@ -1598,7 +1619,7 @@ class AnchorHead(BaseDenseHead, BBoxTestMixin):
         res = (labels_list, label_weights_list, bbox_targets_list,
                bbox_weights_list, num_total_pos, num_total_neg)
         if return_sampling_results:
-            res = res + (sampling_results_list, )
+            res = res + (sampling_results_list,)
         for i, r in enumerate(rest_results):  # user-added return values
             rest_results[i] = images_to_levels(r, num_level_anchors)
 
@@ -1755,32 +1776,6 @@ class AnchorHead(BaseDenseHead, BBoxTestMixin):
                 5-th column is a score between 0 and 1. The second item is a
                 (n,) tensor where each item is the predicted class labelof the
                 corresponding box.
-
-        Example:
-            >>> import mmcv
-            >>> self = AnchorHead(
-            >>>     num_classes=9,
-            >>>     in_channels=1,
-            >>>     anchor_generator=dict(
-            >>>         type='AnchorGenerator',
-            >>>         scales=[8],
-            >>>         ratios=[0.5, 1.0, 2.0],
-            >>>         strides=[4,]))
-            >>> img_metas = [{'img_shape': (32, 32, 3), 'scale_factor': 1}]
-            >>> cfg = mmcv.Config(dict(
-            >>>     score_thr=0.00,
-            >>>     nms=dict(type='nms', iou_thr=1.0),
-            >>>     max_per_img=10))
-            >>> feat = torch.rand(1, 1, 3, 3)
-            >>> cls_score, bbox_pred = self.forward_single(feat)
-            >>> # note the input lists are over different levels, not images
-            >>> cls_scores, bbox_preds = [cls_score], [bbox_pred]
-            >>> result_list = self.get_bboxes(cls_scores, bbox_preds,
-            >>>                               img_metas, cfg)
-            >>> det_bboxes, det_labels = result_list[0]
-            >>> assert len(result_list) == 1
-            >>> assert det_bboxes.shape[1] == 5
-            >>> assert len(det_bboxes) == len(det_labels) == cfg.max_per_img
         """
         assert len(cls_scores) == len(bbox_preds)
         num_levels = len(cls_scores)
@@ -1918,6 +1913,7 @@ class AnchorHead(BaseDenseHead, BBoxTestMixin):
         """
         return self.aug_test_bboxes(feats, img_metas, rescale=rescale)
 
+
 @HEADS.register_module()
 class RetinaHead(AnchorHead):
     r"""An anchor-based head used in `RetinaNet
@@ -1933,20 +1929,30 @@ class RetinaHead(AnchorHead):
                  stacked_convs=4,
                  conv_cfg=None,
                  norm_cfg=None,
-                 anchor_generator=dict(
-                     type='AnchorGenerator',
-                     octave_base_scale=4,
-                     scales_per_octave=3,
-                     ratios=[0.5, 1.0, 2.0],
-                     strides=[8, 16, 32, 64, 128]),
                  **kwargs):
-        self.stacked_convs = stacked_convs
-        self.conv_cfg = conv_cfg
-        self.norm_cfg = norm_cfg
+        anchor_generator = dict(type='AnchorGenerator', octave_base_scale=kwargs['octave_base_scale'],
+                                scales_pre_octave=kwargs['scales_per_octave'], rations=kwargs['anchor_ratios'],
+                                strides=kwargs['anchor_strides'])
+
+        kwargs.pop('octave_base_scale')
+        kwargs.pop('scales_per_octave')
+        kwargs.pop('anchor_ratios')
+        kwargs.pop('anchor_strides')
+        bbox_coder = dict(type='DeltaXYWHBBoxCoder', clip_border=True, target_means=kwargs['target_means'],
+                          target_stds=kwargs['target_stds']),
+        kwargs.pop('target_means')
+        kwargs.pop('target_stds')
+
+        reg_decoded_bbox = False
+        loss_cls = kwargs['loss_cls'],
+        loss_bbox = kwargs['loss_bbox']
+        kwargs.pop('loss_cls')
+        kwargs.pop('loss_bbox')
         super(RetinaHead, self).__init__(
             num_classes,
             in_channels,
-            anchor_generator=anchor_generator,
+            anchor_generator=anchor_generator, bbox_coder=bbox_coder, reg_decoded_bbox=reg_decoded_bbox,
+            loss_cls=loss_cls, loss_bbox=loss_bbox,
             **kwargs)
 
     def _init_layers(self):
@@ -2014,6 +2020,8 @@ class RetinaHead(AnchorHead):
         cls_score = self.retina_cls(cls_feat)
         bbox_pred = self.retina_reg(reg_feat)
         return cls_score, bbox_pred
+
+
 @HEADS.register_module()
 class RetinaSepBNHead(AnchorHead):
     """"RetinaHead with separate BN.
@@ -2031,14 +2039,32 @@ class RetinaSepBNHead(AnchorHead):
                  conv_cfg=None,
                  norm_cfg=None,
                  **kwargs):
-        for k,v in kwargs.items():
-            print(k,v)
-        super(RetinaSepBNHead, self).__init__(num_classes, in_channels,
-                                              **kwargs)
         self.stacked_convs = stacked_convs
         self.conv_cfg = conv_cfg
         self.norm_cfg = norm_cfg
         self.num_ins = num_ins
+        anchor_generator = dict(type='AnchorGenerator', octave_base_scale=kwargs['octave_base_scale'],
+                                scales_pre_octave=kwargs['scales_per_octave'], rations=kwargs['anchor_ratios'],
+                                strides=kwargs['anchor_strides'])
+        kwargs.pop('octave_base_scale')
+        kwargs.pop('scales_per_octave')
+        kwargs.pop('anchor_ratios')
+        kwargs.pop('anchor_strides')
+        bbox_coder = dict(type='DeltaXYWHBBoxCoder', clip_border=True, target_means=kwargs['target_means'],
+                          target_stds=kwargs['target_stds']),
+        kwargs.pop('target_means')
+        kwargs.pop('target_stds')
+
+        reg_decoded_bbox = False
+        loss_cls = kwargs['loss_cls'],
+        loss_bbox = kwargs['loss_bbox']
+        kwargs.pop('loss_cls')
+        kwargs.pop('loss_bbox')
+        print("-" * 25, 'RetinaSepBNHead')
+        for k, v in kwargs.items():
+            print(k, v)
+        super(RetinaSepBNHead, self).__init__(num_classes, in_channels, anchor_generator=anchor_generator,
+                                              **kwargs)
 
     def _init_layers(self):
         """Initialize layers of the head."""
@@ -2123,20 +2149,683 @@ class RetinaSepBNHead(AnchorHead):
             bbox_preds.append(bbox_pred)
         return cls_scores, bbox_preds
 
-def build(cfg,registry,default_args=None):
-    return build_from_cfg(cfg,registry,default_args)
+
+@LOSSES.register_module()
+class CrossEntropyLoss(nn.Module):
+
+    def __init__(self,
+                 use_sigmoid=False,
+                 use_mask=False,
+                 reduction='mean',
+                 class_weight=None,
+                 loss_weight=1.0):
+        """CrossEntropyLoss.
+
+        Args:
+            use_sigmoid (bool, optional): Whether the prediction uses sigmoid
+                of softmax. Defaults to False.
+            use_mask (bool, optional): Whether to use mask cross entropy loss.
+                Defaults to False.
+            reduction (str, optional): . Defaults to 'mean'.
+                Options are "none", "mean" and "sum".
+            class_weight (list[float], optional): Weight of each class.
+                Defaults to None.
+            loss_weight (float, optional): Weight of the loss. Defaults to 1.0.
+        """
+        super(CrossEntropyLoss, self).__init__()
+        assert (use_sigmoid is False) or (use_mask is False)
+        self.use_sigmoid = use_sigmoid
+        self.use_mask = use_mask
+        self.reduction = reduction
+        self.loss_weight = loss_weight
+        self.class_weight = class_weight
+
+        if self.use_sigmoid:
+            self.cls_criterion = binary_cross_entropy
+        elif self.use_mask:
+            self.cls_criterion = mask_cross_entropy
+        else:
+            self.cls_criterion = cross_entropy
+
+    def forward(self,
+                cls_score,
+                label,
+                weight=None,
+                avg_factor=None,
+                reduction_override=None,
+                **kwargs):
+        """Forward function.
+
+        Args:
+            cls_score (torch.Tensor): The prediction.
+            label (torch.Tensor): The learning label of the prediction.
+            weight (torch.Tensor, optional): Sample-wise loss weight.
+            avg_factor (int, optional): Average factor that is used to average
+                the loss. Defaults to None.
+            reduction (str, optional): The method used to reduce the loss.
+                Options are "none", "mean" and "sum".
+        Returns:
+            torch.Tensor: The calculated loss
+        """
+        assert reduction_override in (None, 'none', 'mean', 'sum')
+        reduction = (
+            reduction_override if reduction_override else self.reduction)
+        if self.class_weight is not None:
+            class_weight = cls_score.new_tensor(
+                self.class_weight, device=cls_score.device)
+        else:
+            class_weight = None
+        loss_cls = self.loss_weight * self.cls_criterion(
+            cls_score,
+            label,
+            weight,
+            class_weight=class_weight,
+            reduction=reduction,
+            avg_factor=avg_factor,
+            **kwargs)
+        return loss_cls
+
+
+@LOSSES.register_module()
+class SmoothL1Loss(nn.Module):
+    """Smooth L1 loss.
+
+    Args:
+        beta (float, optional): The threshold in the piecewise function.
+            Defaults to 1.0.
+        reduction (str, optional): The method to reduce the loss.
+            Options are "none", "mean" and "sum". Defaults to "mean".
+        loss_weight (float, optional): The weight of loss.
+    """
+
+    def __init__(self, beta=1.0, reduction='mean', loss_weight=1.0):
+        super(SmoothL1Loss, self).__init__()
+        self.beta = beta
+        self.reduction = reduction
+        self.loss_weight = loss_weight
+
+    def forward(self,
+                pred,
+                target,
+                weight=None,
+                avg_factor=None,
+                reduction_override=None,
+                **kwargs):
+        """Forward function.
+
+        Args:
+            pred (torch.Tensor): The prediction.
+            target (torch.Tensor): The learning target of the prediction.
+            weight (torch.Tensor, optional): The weight of loss for each
+                prediction. Defaults to None.
+            avg_factor (int, optional): Average factor that is used to average
+                the loss. Defaults to None.
+            reduction_override (str, optional): The reduction method used to
+                override the original reduction method of the loss.
+                Defaults to None.
+        """
+        assert reduction_override in (None, 'none', 'mean', 'sum')
+        reduction = (
+            reduction_override if reduction_override else self.reduction)
+        loss_bbox = self.loss_weight * smooth_l1_loss(
+            pred,
+            target,
+            weight,
+            beta=self.beta,
+            reduction=reduction,
+            avg_factor=avg_factor,
+            **kwargs)
+        return loss_bbox
+
+
+@ANCHOR_GENERATORS.register_module()
+class AnchorGenerator(object):
+    """Standard anchor generator for 2D anchor-based detectors.
+
+    Args:
+        strides (list[int] | list[tuple[int, int]]): Strides of anchors
+            in multiple feature levels in order (w, h).
+        ratios (list[float]): The list of ratios between the height and width
+            of anchors in a single level.
+        scales (list[int] | None): Anchor scales for anchors in a single level.
+            It cannot be set at the same time if `octave_base_scale` and
+            `scales_per_octave` are set.
+        base_sizes (list[int] | None): The basic sizes
+            of anchors in multiple levels.
+            If None is given, strides will be used as base_sizes.
+            (If strides are non square, the shortest stride is taken.)
+        scale_major (bool): Whether to multiply scales first when generating
+            base anchors. If true, the anchors in the same row will have the
+            same scales. By default it is True in V2.0
+        octave_base_scale (int): The base scale of octave.
+        scales_per_octave (int): Number of scales for each octave.
+            `octave_base_scale` and `scales_per_octave` are usually used in
+            retinanet and the `scales` should be None when they are set.
+        centers (list[tuple[float, float]] | None): The centers of the anchor
+            relative to the feature grid center in multiple feature levels.
+            By default it is set to be None and not used. If a list of tuple of
+            float is given, they will be used to shift the centers of anchors.
+        center_offset (float): The offset of center in proportion to anchors'
+            width and height. By default it is 0 in V2.0.
+
+    Examples:
+        >>> from mmdet.core import AnchorGenerator
+        >>> self = AnchorGenerator([16], [1.], [1.], [9])
+        >>> all_anchors = self.grid_anchors([(2, 2)], device='cpu')
+        >>> print(all_anchors)
+        [tensor([[-4.5000, -4.5000,  4.5000,  4.5000],
+                [11.5000, -4.5000, 20.5000,  4.5000],
+                [-4.5000, 11.5000,  4.5000, 20.5000],
+                [11.5000, 11.5000, 20.5000, 20.5000]])]
+        >>> self = AnchorGenerator([16, 32], [1.], [1.], [9, 18])
+        >>> all_anchors = self.grid_anchors([(2, 2), (1, 1)], device='cpu')
+        >>> print(all_anchors)
+        [tensor([[-4.5000, -4.5000,  4.5000,  4.5000],
+                [11.5000, -4.5000, 20.5000,  4.5000],
+                [-4.5000, 11.5000,  4.5000, 20.5000],
+                [11.5000, 11.5000, 20.5000, 20.5000]]), \
+        tensor([[-9., -9., 9., 9.]])]
+    """
+
+    def __init__(self,
+                 strides,
+                 ratios,
+                 scales=None,
+                 base_sizes=None,
+                 scale_major=True,
+                 octave_base_scale=None,
+                 scales_per_octave=None,
+                 centers=None,
+                 center_offset=0.):
+        # check center and center_offset
+        if center_offset != 0:
+            assert centers is None, 'center cannot be set when center_offset' \
+                                    f'!=0, {centers} is given.'
+        if not (0 <= center_offset <= 1):
+            raise ValueError('center_offset should be in range [0, 1], '
+                             f'{center_offset} is given.')
+        if centers is not None:
+            assert len(centers) == len(strides), \
+                'The number of strides should be the same as centers, got ' \
+                f'{strides} and {centers}'
+
+        # calculate base sizes of anchors
+        self.strides = [_pair(stride) for stride in strides]
+        self.base_sizes = [min(stride) for stride in self.strides
+                           ] if base_sizes is None else base_sizes
+        assert len(self.base_sizes) == len(self.strides), \
+            'The number of strides should be the same as base sizes, got ' \
+            f'{self.strides} and {self.base_sizes}'
+
+        # calculate scales of anchors
+        assert ((octave_base_scale is not None
+                 and scales_per_octave is not None) ^ (scales is not None)), \
+            'scales and octave_base_scale with scales_per_octave cannot' \
+            ' be set at the same time'
+        if scales is not None:
+            self.scales = torch.Tensor(scales)
+        elif octave_base_scale is not None and scales_per_octave is not None:
+            octave_scales = np.array(
+                [2**(i / scales_per_octave) for i in range(scales_per_octave)])
+            scales = octave_scales * octave_base_scale
+            self.scales = torch.Tensor(scales)
+        else:
+            raise ValueError('Either scales or octave_base_scale with '
+                             'scales_per_octave should be set')
+
+        self.octave_base_scale = octave_base_scale
+        self.scales_per_octave = scales_per_octave
+        self.ratios = torch.Tensor(ratios)
+        self.scale_major = scale_major
+        self.centers = centers
+        self.center_offset = center_offset
+        self.base_anchors = self.gen_base_anchors()
+
+    @property
+    def num_base_anchors(self):
+        """list[int]: total number of base anchors in a feature grid"""
+        return [base_anchors.size(0) for base_anchors in self.base_anchors]
+
+    @property
+    def num_levels(self):
+        """int: number of feature levels that the generator will be applied"""
+        return len(self.strides)
+
+    def gen_base_anchors(self):
+        """Generate base anchors.
+
+        Returns:
+            list(torch.Tensor): Base anchors of a feature grid in multiple \
+                feature levels.
+        """
+        multi_level_base_anchors = []
+        for i, base_size in enumerate(self.base_sizes):
+            center = None
+            if self.centers is not None:
+                center = self.centers[i]
+            multi_level_base_anchors.append(
+                self.gen_single_level_base_anchors(
+                    base_size,
+                    scales=self.scales,
+                    ratios=self.ratios,
+                    center=center))
+        return multi_level_base_anchors
+
+    def gen_single_level_base_anchors(self,
+                                      base_size,
+                                      scales,
+                                      ratios,
+                                      center=None):
+        """Generate base anchors of a single level.
+
+        Args:
+            base_size (int | float): Basic size of an anchor.
+            scales (torch.Tensor): Scales of the anchor.
+            ratios (torch.Tensor): The ratio between between the height
+                and width of anchors in a single level.
+            center (tuple[float], optional): The center of the base anchor
+                related to a single feature grid. Defaults to None.
+
+        Returns:
+            torch.Tensor: Anchors in a single-level feature maps.
+        """
+        w = base_size
+        h = base_size
+        if center is None:
+            x_center = self.center_offset * w
+            y_center = self.center_offset * h
+        else:
+            x_center, y_center = center
+
+        h_ratios = torch.sqrt(ratios)
+        w_ratios = 1 / h_ratios
+        if self.scale_major:
+            ws = (w * w_ratios[:, None] * scales[None, :]).view(-1)
+            hs = (h * h_ratios[:, None] * scales[None, :]).view(-1)
+        else:
+            ws = (w * scales[:, None] * w_ratios[None, :]).view(-1)
+            hs = (h * scales[:, None] * h_ratios[None, :]).view(-1)
+
+        # use float anchor and the anchor's center is aligned with the
+        # pixel center
+        base_anchors = [
+            x_center - 0.5 * ws, y_center - 0.5 * hs, x_center + 0.5 * ws,
+            y_center + 0.5 * hs
+        ]
+        base_anchors = torch.stack(base_anchors, dim=-1)
+
+        return base_anchors
+
+    def _meshgrid(self, x, y, row_major=True):
+        """Generate mesh grid of x and y.
+
+        Args:
+            x (torch.Tensor): Grids of x dimension.
+            y (torch.Tensor): Grids of y dimension.
+            row_major (bool, optional): Whether to return y grids first.
+                Defaults to True.
+
+        Returns:
+            tuple[torch.Tensor]: The mesh grids of x and y.
+        """
+        xx = x.repeat(len(y))
+        yy = y.view(-1, 1).repeat(1, len(x)).view(-1)
+        if row_major:
+            return xx, yy
+        else:
+            return yy, xx
+
+    def grid_anchors(self, featmap_sizes, device='cuda'):
+        """Generate grid anchors in multiple feature levels.
+
+        Args:
+            featmap_sizes (list[tuple]): List of feature map sizes in
+                multiple feature levels.
+            device (str): Device where the anchors will be put on.
+
+        Return:
+            list[torch.Tensor]: Anchors in multiple feature levels. \
+                The sizes of each tensor should be [N, 4], where \
+                N = width * height * num_base_anchors, width and height \
+                are the sizes of the corresponding feature level, \
+                num_base_anchors is the number of anchors for that level.
+        """
+        assert self.num_levels == len(featmap_sizes)
+        multi_level_anchors = []
+        for i in range(self.num_levels):
+            anchors = self.single_level_grid_anchors(
+                self.base_anchors[i].to(device),
+                featmap_sizes[i],
+                self.strides[i],
+                device=device)
+            multi_level_anchors.append(anchors)
+        return multi_level_anchors
+
+    def single_level_grid_anchors(self,
+                                  base_anchors,
+                                  featmap_size,
+                                  stride=(16, 16),
+                                  device='cuda'):
+        """Generate grid anchors of a single level.
+
+        Note:
+            This function is usually called by method ``self.grid_anchors``.
+
+        Args:
+            base_anchors (torch.Tensor): The base anchors of a feature grid.
+            featmap_size (tuple[int]): Size of the feature maps.
+            stride (tuple[int], optional): Stride of the feature map in order
+                (w, h). Defaults to (16, 16).
+            device (str, optional): Device the tensor will be put on.
+                Defaults to 'cuda'.
+
+        Returns:
+            torch.Tensor: Anchors in the overall feature maps.
+        """
+        feat_h, feat_w = featmap_size
+        # convert Tensor to int, so that we can covert to ONNX correctlly
+        feat_h = int(feat_h)
+        feat_w = int(feat_w)
+        shift_x = torch.arange(0, feat_w, device=device) * stride[0]
+        shift_y = torch.arange(0, feat_h, device=device) * stride[1]
+
+        shift_xx, shift_yy = self._meshgrid(shift_x, shift_y)
+        shifts = torch.stack([shift_xx, shift_yy, shift_xx, shift_yy], dim=-1)
+        shifts = shifts.type_as(base_anchors)
+        # first feat_w elements correspond to the first row of shifts
+        # add A anchors (1, A, 4) to K shifts (K, 1, 4) to get
+        # shifted anchors (K, A, 4), reshape to (K*A, 4)
+
+        all_anchors = base_anchors[None, :, :] + shifts[:, None, :]
+        all_anchors = all_anchors.view(-1, 4)
+        # first A rows correspond to A anchors of (0, 0) in feature map,
+        # then (0, 1), (0, 2), ...
+        return all_anchors
+
+    def valid_flags(self, featmap_sizes, pad_shape, device='cuda'):
+        """Generate valid flags of anchors in multiple feature levels.
+
+        Args:
+            featmap_sizes (list(tuple)): List of feature map sizes in
+                multiple feature levels.
+            pad_shape (tuple): The padded shape of the image.
+            device (str): Device where the anchors will be put on.
+
+        Return:
+            list(torch.Tensor): Valid flags of anchors in multiple levels.
+        """
+        assert self.num_levels == len(featmap_sizes)
+        multi_level_flags = []
+        for i in range(self.num_levels):
+            anchor_stride = self.strides[i]
+            feat_h, feat_w = featmap_sizes[i]
+            h, w = pad_shape[:2]
+            valid_feat_h = min(int(np.ceil(h / anchor_stride[1])), feat_h)
+            valid_feat_w = min(int(np.ceil(w / anchor_stride[0])), feat_w)
+            flags = self.single_level_valid_flags((feat_h, feat_w),
+                                                  (valid_feat_h, valid_feat_w),
+                                                  self.num_base_anchors[i],
+                                                  device=device)
+            multi_level_flags.append(flags)
+        return multi_level_flags
+
+    def single_level_valid_flags(self,
+                                 featmap_size,
+                                 valid_size,
+                                 num_base_anchors,
+                                 device='cuda'):
+        """Generate the valid flags of anchor in a single feature map.
+
+        Args:
+            featmap_size (tuple[int]): The size of feature maps.
+            valid_size (tuple[int]): The valid size of the feature maps.
+            num_base_anchors (int): The number of base anchors.
+            device (str, optional): Device where the flags will be put on.
+                Defaults to 'cuda'.
+
+        Returns:
+            torch.Tensor: The valid flags of each anchor in a single level \
+                feature map.
+        """
+        feat_h, feat_w = featmap_size
+        valid_h, valid_w = valid_size
+        assert valid_h <= feat_h and valid_w <= feat_w
+        valid_x = torch.zeros(feat_w, dtype=torch.bool, device=device)
+        valid_y = torch.zeros(feat_h, dtype=torch.bool, device=device)
+        valid_x[:valid_w] = 1
+        valid_y[:valid_h] = 1
+        valid_xx, valid_yy = self._meshgrid(valid_x, valid_y)
+        valid = valid_xx & valid_yy
+        valid = valid[:, None].expand(valid.size(0),
+                                      num_base_anchors).contiguous().view(-1)
+        return valid
+
+    def __repr__(self):
+        """str: a string that describes the module"""
+        indent_str = '    '
+        repr_str = self.__class__.__name__ + '(\n'
+        repr_str += f'{indent_str}strides={self.strides},\n'
+        repr_str += f'{indent_str}ratios={self.ratios},\n'
+        repr_str += f'{indent_str}scales={self.scales},\n'
+        repr_str += f'{indent_str}base_sizes={self.base_sizes},\n'
+        repr_str += f'{indent_str}scale_major={self.scale_major},\n'
+        repr_str += f'{indent_str}octave_base_scale='
+        repr_str += f'{self.octave_base_scale},\n'
+        repr_str += f'{indent_str}scales_per_octave='
+        repr_str += f'{self.scales_per_octave},\n'
+        repr_str += f'{indent_str}num_levels={self.num_levels}\n'
+        repr_str += f'{indent_str}centers={self.centers},\n'
+        repr_str += f'{indent_str}center_offset={self.center_offset})'
+        return repr_str
+
+
+def smooth_l1_loss(pred, target, beta=1.0):
+    """Smooth L1 loss.
+
+    Args:
+        pred (torch.Tensor): The prediction.
+        target (torch.Tensor): The learning target of the prediction.
+        beta (float, optional): The threshold in the piecewise function.
+            Defaults to 1.0.
+
+    Returns:
+        torch.Tensor: Calculated loss
+    """
+    assert beta > 0
+    assert pred.size() == target.size() and target.numel() > 0
+    diff = torch.abs(pred - target)
+    loss = torch.where(diff < beta, 0.5 * diff * diff / beta,
+                       diff - 0.5 * beta)
+    return loss
+def cross_entropy(pred,
+                  label,
+                  weight=None,
+                  reduction='mean',
+                  avg_factor=None,
+                  class_weight=None):
+    """Calculate the CrossEntropy loss.
+
+    Args:
+        pred (torch.Tensor): The prediction with shape (N, C), C is the number
+            of classes.
+        label (torch.Tensor): The learning label of the prediction.
+        weight (torch.Tensor, optional): Sample-wise loss weight.
+        reduction (str, optional): The method used to reduce the loss.
+        avg_factor (int, optional): Average factor that is used to average
+            the loss. Defaults to None.
+        class_weight (list[float], optional): The weight for each class.
+
+    Returns:
+        torch.Tensor: The calculated loss
+    """
+    # element-wise losses
+    loss = F.cross_entropy(pred, label, weight=class_weight, reduction='none')
+
+    # apply weights and do the reduction
+    if weight is not None:
+        weight = weight.float()
+    loss = weight_reduce_loss(
+        loss, weight=weight, reduction=reduction, avg_factor=avg_factor)
+
+    return loss
+
+
+def _expand_onehot_labels(labels, label_weights, label_channels):
+    bin_labels = labels.new_full((labels.size(0), label_channels), 0)
+    inds = torch.nonzero(
+        (labels >= 0) & (labels < label_channels), as_tuple=False).squeeze()
+    if inds.numel() > 0:
+        bin_labels[inds, labels[inds]] = 1
+
+    if label_weights is None:
+        bin_label_weights = None
+    else:
+        bin_label_weights = label_weights.view(-1, 1).expand(
+            label_weights.size(0), label_channels)
+
+    return bin_labels, bin_label_weights
+
+
+def binary_cross_entropy(pred,
+                         label,
+                         weight=None,
+                         reduction='mean',
+                         avg_factor=None,
+                         class_weight=None):
+    """Calculate the binary CrossEntropy loss.
+
+    Args:
+        pred (torch.Tensor): The prediction with shape (N, 1).
+        label (torch.Tensor): The learning label of the prediction.
+        weight (torch.Tensor, optional): Sample-wise loss weight.
+        reduction (str, optional): The method used to reduce the loss.
+            Options are "none", "mean" and "sum".
+        avg_factor (int, optional): Average factor that is used to average
+            the loss. Defaults to None.
+        class_weight (list[float], optional): The weight for each class.
+
+    Returns:
+        torch.Tensor: The calculated loss
+    """
+    if pred.dim() != label.dim():
+        label, weight = _expand_onehot_labels(label, weight, pred.size(-1))
+
+    # weighted element-wise losses
+    if weight is not None:
+        weight = weight.float()
+    loss = F.binary_cross_entropy_with_logits(
+        pred, label.float(), pos_weight=class_weight, reduction='none')
+    # do the reduction for the weighted loss
+    loss = weight_reduce_loss(
+        loss, weight, reduction=reduction, avg_factor=avg_factor)
+
+    return loss
+
+
+def mask_cross_entropy(pred,
+                       target,
+                       label,
+                       reduction='mean',
+                       avg_factor=None,
+                       class_weight=None):
+    """Calculate the CrossEntropy loss for masks.
+
+    Args:
+        pred (torch.Tensor): The prediction with shape (N, C), C is the number
+            of classes.
+        target (torch.Tensor): The learning label of the prediction.
+        label (torch.Tensor): ``label`` indicates the class label of the mask'
+            corresponding object. This will be used to select the mask in the
+            of the class which the object belongs to when the mask prediction
+            if not class-agnostic.
+        reduction (str, optional): The method used to reduce the loss.
+            Options are "none", "mean" and "sum".
+        avg_factor (int, optional): Average factor that is used to average
+            the loss. Defaults to None.
+        class_weight (list[float], optional): The weight for each class.
+
+    Returns:
+        torch.Tensor: The calculated loss
+    """
+    # TODO: handle these two reserved arguments
+    assert reduction == 'mean' and avg_factor is None
+    num_rois = pred.size()[0]
+    inds = torch.arange(0, num_rois, dtype=torch.long, device=pred.device)
+    pred_slice = pred[inds, label].squeeze(1)
+    return F.binary_cross_entropy_with_logits(
+        pred_slice, target, weight=class_weight, reduction='mean')[None]
+
+def weight_reduce_loss(loss, weight=None, reduction='mean', avg_factor=None):
+    """Apply element-wise weight and reduce loss.
+
+    Args:
+        loss (Tensor): Element-wise loss.
+        weight (Tensor): Element-wise weights.
+        reduction (str): Same as built-in losses of PyTorch.
+        avg_factor (float): Avarage factor when computing the mean of losses.
+
+    Returns:
+        Tensor: Processed loss values.
+    """
+    # if weight is specified, apply element-wise weight
+    if weight is not None:
+        loss = loss * weight
+
+    # if avg_factor is not specified, just reduce the loss
+    if avg_factor is None:
+        loss = reduce_loss(loss, reduction)
+    else:
+        # if reduction is mean, then average the loss by avg_factor
+        if reduction == 'mean':
+            loss = loss.sum() / avg_factor
+        # if reduction is 'none', then do nothing, otherwise raise an error
+        elif reduction != 'none':
+            raise ValueError('avg_factor can not be used with reduction="sum"')
+    return loss
+
+def reduce_loss(loss, reduction):
+    """Reduce loss as specified.
+
+    Args:
+        loss (Tensor): Elementwise loss tensor.
+        reduction (str): Options are "none", "mean" and "sum".
+
+    Return:
+        Tensor: Reduced loss tensor.
+    """
+    reduction_enum = F._Reduction.get_enum(reduction)
+    # none: 0, elementwise_mean:1, sum: 2
+    if reduction_enum == 0:
+        return loss
+    elif reduction_enum == 1:
+        return loss.mean()
+    elif reduction_enum == 2:
+        return loss.sum()
+
+def build(cfg, registry, default_args=None):
+    return build_from_cfg(cfg, registry, default_args)
+
+def build_anchor_generator(cfg, default_args=None):
+    return build_from_cfg(cfg, ANCHOR_GENERATORS, default_args)
+
 def build_backbone(cfg):
     """Build backbone."""
     return build(cfg, BACKBONES)
+
+
 def build_head(cfg):
     """Build head."""
     return build(cfg, HEADS)
 
+
 def build_neck(cfg):
     """Build neck."""
     return build(cfg, NECKS)
-def build_model(cfg,train_cfg=None,test_cfg=None):
-    return build(cfg,DETECTORS,dict(train_cfg=train_cfg, test_cfg=test_cfg))
+
+
+def build_model(cfg, train_cfg=None, test_cfg=None):
+    return build(cfg, DETECTORS, dict(train_cfg=train_cfg, test_cfg=test_cfg))
+
 
 def build_loss(cfg):
     """Build loss."""
