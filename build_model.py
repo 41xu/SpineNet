@@ -2750,13 +2750,17 @@ class DefaultOptimizerConstructor:
         # if no paramwise option is specified, just use the global setting
         if not self.paramwise_cfg:
             optimizer_cfg['params'] = model.parameters()
+
+            print(optimizer_cfg)
+            print("*"*20)
+            print(optimizer_cfg['params'])
+    
             return build_from_cfg(optimizer_cfg, OPTIMIZERS)
 
         # set param-wise lr and weight decay recursively
         params = []
         self.add_params(params, model)
         optimizer_cfg['params'] = params
-
         return build_from_cfg(optimizer_cfg, OPTIMIZERS)
 @OPTIMIZERS.register_module()
 class SGD(DefaultOptimizerConstructor):
