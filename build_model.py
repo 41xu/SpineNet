@@ -2606,7 +2606,7 @@ class AnchorGenerator(object):
         return repr_str
 
 @OPTIMIZER_BUILDERS.register_module()
-class DefaultOptimizerConstructor:
+class SGDOptimizerConstructor:
     """Default constructor for optimizers.
     By default each parameter share the same optimizer settings, and we
     provide an argument ``paramwise_cfg`` to specify parameter-wise settings.
@@ -3031,7 +3031,7 @@ def build_optimizer_constructor(cfg):
 def build_optimizer(model, cfg):
     optimizer_cfg = copy.deepcopy(cfg)
     constructor_type = optimizer_cfg.pop('constructor',
-                                         'DefaultOptimizerConstructor')
+                                         'SGDOptimizerConstructor')
     paramwise_cfg = optimizer_cfg.pop('paramwise_cfg', None)
     optim_constructor = build_optimizer_constructor(
         dict(
