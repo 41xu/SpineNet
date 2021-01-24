@@ -1,4 +1,5 @@
-from mmcv.utils import Registry, build_from_cfg
+# from mmcv.utils import Registry, build_from_cfg
+from mmcv.utils import Registry
 from torch.nn import GroupNorm, LayerNorm
 import torch.nn.functional as F
 from torch.nn.modules.utils import _pair
@@ -2755,7 +2756,6 @@ class DefaultOptimizerConstructor:
 
         # set param-wise lr and weight decay recursively
         params = list(optimizer_cfg.keys())
-        print(params)
         self.add_params(params, model)
         optimizer_cfg['params'] = params
         optimizer_cfg['lr']=self.base_lr
@@ -2952,7 +2952,14 @@ def reduce_loss(loss, reduction):
         return loss.mean()
     elif reduction_enum == 2:
         return loss.sum()
-
+def build_from_cfg(cfg, registry, default_args=None):
+    args = cfg.copy()
+    obj_type = args.pop('type')
+    if isinstance(obj_type, str):
+        obj_cls = registry.get(obj_type)
+    elif inspect.isclass(obj_type):
+        obj_cls = obj_type
+    return obj_cls(**args)
 def build(cfg, registry, default_args=None):
     return build_from_cfg(cfg, registry, default_args)
 
