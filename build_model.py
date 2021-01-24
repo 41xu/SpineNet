@@ -1,5 +1,4 @@
-# from mmcv.utils import Registry, build_from_cfg
-from mmcv.utils import Registry
+from mmcv.utils import Registry, build_from_cfg
 from torch.nn import GroupNorm, LayerNorm
 import torch.nn.functional as F
 from torch.nn.modules.utils import _pair
@@ -2612,7 +2611,7 @@ class AnchorGenerator(object):
 class DefaultOptimizerConstructor:
     def __init__(self, optimizer_cfg, paramwise_cfg=None):
         self.optimizer_cfg = optimizer_cfg
-        self.paramwise_cfg = {} if paramwise_cfg is None else paramwise_cfg
+        self.paramwise_cfg = None if paramwise_cfg is None else paramwise_cfg
         self.base_lr = optimizer_cfg.get('lr')
         self.base_wd = optimizer_cfg.get('weight_decay')
         self._validate_cfg()
@@ -2952,14 +2951,7 @@ def reduce_loss(loss, reduction):
         return loss.mean()
     elif reduction_enum == 2:
         return loss.sum()
-def build_from_cfg(cfg, registry, default_args=None):
-    args = cfg.copy()
-    obj_type = args.pop('type')
-    if isinstance(obj_type, str):
-        obj_cls = registry.get(obj_type)
-    elif inspect.isclass(obj_type):
-        obj_cls = obj_type
-    return obj_cls(**args)
+
 def build(cfg, registry, default_args=None):
     return build_from_cfg(cfg, registry, default_args)
 
