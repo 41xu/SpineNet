@@ -224,6 +224,7 @@ def train_detector(model,
     print("-"*20)
     print(cfg.optimizer)
     optimizer = build_optimizer(model, cfg.optimizer)
+
     runner = EpochBasedRunner(
         model,
         optimizer=optimizer,

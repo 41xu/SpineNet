@@ -105,8 +105,7 @@ data = dict(
 evaluation = dict(interval=1, metric='bbox')
 # optimizer
 optimizer = dict(
-    #type='SGD',
-    type='Default',
+    type='SGD',
     lr=0.07,
     momentum=0.9,
     weight_decay=4e-5,

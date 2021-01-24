@@ -2610,9 +2610,6 @@ class AnchorGenerator(object):
 @OPTIMIZER_BUILDERS.register_module()
 class DefaultOptimizerConstructor:
     def __init__(self, optimizer_cfg, paramwise_cfg=None):
-        if not isinstance(optimizer_cfg, dict):
-            raise TypeError('optimizer_cfg should be a dict',
-                            f'but got {type(optimizer_cfg)}')
         self.optimizer_cfg = optimizer_cfg
         self.paramwise_cfg = {} if paramwise_cfg is None else paramwise_cfg
         self.base_lr = optimizer_cfg.get('lr', None)
@@ -2979,12 +2976,17 @@ def build_model(cfg, train_cfg=None, test_cfg=None):
 def build_loss(cfg):
     """Build loss."""
     return build(cfg, LOSSES)
+
+
 def build_optimizer_constructor(cfg):
     return build_from_cfg(cfg, OPTIMIZER_BUILDERS)
+
+
 def build_optimizer(model, cfg):
     optimizer_cfg = copy.deepcopy(cfg)
     constructor_type = optimizer_cfg.pop('constructor',
                                          'DefaultOptimizerConstructor')
+    print(constructor_type)
     paramwise_cfg = optimizer_cfg.pop('paramwise_cfg', None)
     optim_constructor = build_optimizer_constructor(
         dict(
