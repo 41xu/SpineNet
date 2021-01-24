@@ -109,7 +109,8 @@ optimizer = dict(
     #lr=0.07,
     #momentum=0.9,
     #weight_decay=4e-5,
-    paramwise_options=dict(norm_decay_mult=0))
+    #paramwise_options=dict(norm_decay_mult=0))
+)
 optimizer_config = dict(grad_clip=dict(max_norm=10, norm_type=2))
 # learning policy
 lr_config = dict(
