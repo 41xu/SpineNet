@@ -2616,28 +2616,6 @@ class DefaultOptimizerConstructor:
         self.base_wd = optimizer_cfg.get('weight_decay')
         self._validate_cfg()
 
-    def _validate_cfg(self):
-        if not isinstance(self.paramwise_cfg, dict):
-            raise TypeError('paramwise_cfg should be None or a dict, '
-                            f'but got {type(self.paramwise_cfg)}')
-
-        if 'custom_keys' in self.paramwise_cfg:
-            if not isinstance(self.paramwise_cfg['custom_keys'], dict):
-                raise TypeError(
-                    'If specified, custom_keys must be a dict, '
-                    f'but got {type(self.paramwise_cfg["custom_keys"])}')
-            if self.base_wd is None:
-                for key in self.paramwise_cfg['custom_keys']:
-                    if 'decay_mult' in self.paramwise_cfg['custom_keys'][key]:
-                        raise ValueError('base_wd should not be None')
-
-        # get base lr and weight decay
-        # weight_decay must be explicitly specified if mult is specified
-        if ('bias_decay_mult' in self.paramwise_cfg
-                or 'norm_decay_mult' in self.paramwise_cfg
-                or 'dwconv_decay_mult' in self.paramwise_cfg):
-            if self.base_wd is None:
-                raise ValueError('base_wd should not be None')
 
     def _is_in(self, param_group, param_group_list):
         param = set(param_group['params'])
