@@ -2746,7 +2746,7 @@ class DefaultOptimizerConstructor(object):
     def __call__(self, model):
         if hasattr(model, 'module'):
             model = model.module
-    
+
         optimizer_cfg = self.optimizer_cfg.copy()
         # if no paramwise option is specified, just use the global setting
         if not self.paramwise_cfg:
