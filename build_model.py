@@ -2761,12 +2761,12 @@ class DefaultOptimizerConstructor:
         optimizer_cfg['params'] = params
 
         return build_from_cfg(optimizer_cfg, OPTIMIZERS)
-@OPTIMIZER_BUILDERS.register_module()
+@OPTIMIZERS.register_module()
 class SGD(DefaultOptimizerConstructor):
     def __init__(self, optimizer_cfg, paramwise_cfg=None):
         super(DefaultOptimizerConstructor,self).__init__(
         optimizer_cfg=optimizer_cfg,paramwise_cfg=paramwise_cfg)
-    
+
 
 def smooth_l1_loss(pred, target, beta=1.0):
     """Smooth L1 loss.
