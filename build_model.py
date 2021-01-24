@@ -3031,7 +3031,7 @@ def build_optimizer_constructor(cfg):
 def build_optimizer(model, cfg):
     optimizer_cfg = copy.deepcopy(cfg)
     constructor_type = optimizer_cfg.pop('constructor',
-                                         'SGDOptimizerConstructor')
+                                         'DefaultOptimizerConstructor')
     paramwise_cfg = optimizer_cfg.pop('paramwise_cfg', None)
     optim_constructor = build_optimizer_constructor(
         dict(
